@@ -103,6 +103,8 @@ async def reg_team(message: Message, state: FSMContext):
         "score": 0,
     }
     await state.clear()
+    is_admin = user.id in ADMIN_IDS
+    menu = admin_menu() if is_admin else user_menu()
     await message.answer(
         f"✅ Регистрация завершена!\n\n"
         f"🚗 {data['car']} | {data['plate']}\n"
@@ -111,7 +113,8 @@ async def reg_team(message: Message, state: FSMContext):
         f"Оплата наличными или переводом организатору.\n"
         f"После оплаты нажми /pay — админ отметит тебя.\n\n"
         f"⏳ Ждите подтверждения.\n"
-        f"Если у вас возникли вопросы — свяжитесь с админом: {ADMIN_CONTACT}"
+        f"Если у вас возникли вопросы — свяжитесь с админом: {ADMIN_CONTACT}",
+        reply_markup=menu
     )
 
 @dp.message(Command("unreg"))
@@ -211,7 +214,7 @@ async def cb_list(callback: CallbackQuery):
         text += f"👤 {p['username']}\n\n"
     await callback.message.edit_text(text, parse_mode="HTML")
 
-# ============ ИГРОКИ (объединённая кнопка) ============
+# ============ ИГРОКИ ============
 @dp.callback_query(F.data == "show_players")
 async def cb_show_players(callback: CallbackQuery):
     if not players:
@@ -361,7 +364,6 @@ async def cb_roles(callback: CallbackQuery):
     await send_links(hunters, victims)
 
 async def send_links(hunters, victims):
-    """Рассылает ссылки охотникам и жертвам"""
     for h in hunters:
         try:
             link = await bot.create_chat_invite_link(
@@ -394,7 +396,7 @@ async def send_links(hunters, victims):
         except Exception:
             pass
 
-# ============ НОВЫЙ РАУНД (авто-кик + новые ссылки) ============
+# ============ НОВЫЙ РАУНД ============
 @dp.callback_query(F.data == "new_round")
 async def cb_new_round(callback: CallbackQuery):
     if not HUNTERS_CHAT_ID or not VICTIMS_CHAT_ID:
@@ -647,6 +649,12 @@ async def btn_edit(message: Message, state: FSMContext):
 async def btn_panel(message: Message):
     await panel(message)
 
+@dp.message(Command("menu"))
+async def cmd_menu(message: Message):
+    is_admin = message.from_user.id in ADMIN_IDS
+    menu = admin_menu() if is_admin else user_menu()
+    await message.answer("Меню:", reply_markup=menu)
+
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
@@ -660,6 +668,7 @@ async def cmd_help(message: Message):
         "/unreg — отменить регистрацию\n"
         "/edit — изменить данные\n"
         "/pay — сообщить об оплате\n"
+        "/menu — показать меню\n"
         "/panel — админ-панель (только для админа)\n"
         "/help — эта справка",
         parse_mode="HTML"
