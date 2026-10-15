@@ -41,7 +41,7 @@ def user_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📝 Регистрация"), KeyboardButton(text="💸 Я оплатил")],
-            [KeyboardButton(text="✏️ Изменить данные"), KeyboardButton(text="ℹ️ Помощь")],
+            [KeyboardButton(text="✏️ Изменить данные")],
         ],
         resize_keyboard=True
     )
@@ -51,12 +51,11 @@ def admin_menu():
         keyboard=[
             [KeyboardButton(text="⚙️ Админ-панель")],
             [KeyboardButton(text="📝 Регистрация"), KeyboardButton(text="💸 Я оплатил")],
-            [KeyboardButton(text="✏️ Изменить данные"), KeyboardButton(text="ℹ️ Помощь")],
+            [KeyboardButton(text="✏️ Изменить данные")],
         ],
         resize_keyboard=True
     )
 
-# Кнопки, которые нельзя принимать как данные при регистрации
 MENU_BUTTONS = ["📝 Регистрация", "💸 Я оплатил", "✏️ Изменить данные", "ℹ️ Помощь", "⚙️ Админ-панель"]
 
 # ============ РЕГИСТРАЦИЯ ============
@@ -189,15 +188,13 @@ async def panel(message: Message):
         await message.answer("Эта команда только для админа.")
         return
     buttons = [
-        [InlineKeyboardButton(text="✅ Подтвердить игрока", callback_data="show_confirm")],
-        [InlineKeyboardButton(text="❌ Отменить подтверждение", callback_data="show_unconfirm")],
-        [InlineKeyboardButton(text="🗑 Удалить игрока", callback_data="show_delete")],
+        [InlineKeyboardButton(text="👥 Игроки", callback_data="show_players")],
         [InlineKeyboardButton(text="📋 Полный список", callback_data="show_list")],
         [InlineKeyboardButton(text="🎲 Жеребьёвка", callback_data="show_roles")],
-        [InlineKeyboardButton(text="🔄 Новый раунд", callback_data="new_round")],
+        [InlineKeyboardButton(text="♻️ Новый раунд", callback_data="new_round")],
         [InlineKeyboardButton(text="📊 Результаты раунда", callback_data="show_rounds")],
         [InlineKeyboardButton(text="📋 Итоги игры", callback_data="show_results")],
-        [InlineKeyboardButton(text="🔄 Очистить список", callback_data="clear_list")],
+        [InlineKeyboardButton(text="🗑 Очистить всё", callback_data="clear_list")],
     ]
     await message.answer("⚙️ Админ-панель:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
@@ -214,22 +211,49 @@ async def cb_list(callback: CallbackQuery):
         text += f"👤 {p['username']}\n\n"
     await callback.message.edit_text(text, parse_mode="HTML")
 
-# ============ ПОДТВЕРЖДЕНИЕ ============
-@dp.callback_query(F.data == "show_confirm")
-async def cb_show_confirm(callback: CallbackQuery):
+# ============ ИГРОКИ (объединённая кнопка) ============
+@dp.callback_query(F.data == "show_players")
+async def cb_show_players(callback: CallbackQuery):
+    if not players:
+        await callback.message.edit_text("Список пуст.")
+        return
     buttons = []
     for uid, p in players.items():
-        if not p.get("confirmed"):
-            buttons.append([InlineKeyboardButton(
-                text=f"{p['team']} ({p['plate']})",
-                callback_data=f"confirm_{uid}"
-            )])
-    if not buttons:
-        await callback.message.edit_text("Все игроки уже подтверждены ✅")
-        return
+        status = "✅" if p.get("confirmed") else "❌"
+        buttons.append([InlineKeyboardButton(
+            text=f"{status} {p['team']} ({p['plate']})",
+            callback_data=f"player_card_{uid}"
+        )])
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_panel")])
     await callback.message.edit_text(
-        "Кто приехал И оплатил? Жми на игрока:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        "👥 <b>Игроки</b>\nЖми на игрока для действий:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data.startswith("player_card_"))
+async def cb_player_card(callback: CallbackQuery):
+    uid = int(callback.data.split("_")[2])
+    if uid not in players:
+        await callback.answer("Игрок не найден")
+        return
+    p = players[uid]
+    status = "✅ Подтверждён" if p.get("confirmed") else "❌ Не подтверждён"
+    buttons = []
+    if p.get("confirmed"):
+        buttons.append([InlineKeyboardButton(text="❌ Отменить подтверждение", callback_data=f"unconfirm_{uid}")])
+    else:
+        buttons.append([InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_{uid}")])
+    buttons.append([InlineKeyboardButton(text="🗑 Удалить игрока", callback_data=f"delete_{uid}")])
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="show_players")])
+    await callback.message.edit_text(
+        f"<b>{p['team']}</b>\n"
+        f"🚗 {p['car']} | {p['plate']}\n"
+        f"👤 {p['username']}\n"
+        f"Статус: {status}\n"
+        f"🏆 Баллы: {p.get('score', 0)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML"
     )
 
 @dp.callback_query(F.data.startswith("confirm_"))
@@ -262,25 +286,7 @@ async def cb_confirm(callback: CallbackQuery):
                 )
             except Exception:
                 pass
-    await cb_show_confirm(callback)
-
-# ============ ОТМЕНА ПОДТВЕРЖДЕНИЯ ============
-@dp.callback_query(F.data == "show_unconfirm")
-async def cb_show_unconfirm(callback: CallbackQuery):
-    buttons = []
-    for uid, p in players.items():
-        if p.get("confirmed"):
-            buttons.append([InlineKeyboardButton(
-                text=f"{p['team']} ({p['plate']})",
-                callback_data=f"unconfirm_{uid}"
-            )])
-    if not buttons:
-        await callback.message.edit_text("Нет подтверждённых игроков.")
-        return
-    await callback.message.edit_text(
-        "Кого отменить? Жми на игрока:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
+    await cb_player_card(callback)
 
 @dp.callback_query(F.data.startswith("unconfirm_"))
 async def cb_unconfirm(callback: CallbackQuery):
@@ -289,24 +295,7 @@ async def cb_unconfirm(callback: CallbackQuery):
         players[uid]["confirmed"] = False
         name = players[uid]["name"]
         await callback.answer(f"❌ {name} снят с подтверждения")
-    await cb_show_unconfirm(callback)
-
-# ============ УДАЛЕНИЕ ИГРОКА ============
-@dp.callback_query(F.data == "show_delete")
-async def cb_show_delete(callback: CallbackQuery):
-    buttons = []
-    for uid, p in players.items():
-        buttons.append([InlineKeyboardButton(
-            text=f"{p['team']} ({p['plate']})",
-            callback_data=f"delete_{uid}"
-        )])
-    if not buttons:
-        await callback.message.edit_text("Список пуст.")
-        return
-    await callback.message.edit_text(
-        "Кого удалить? Жми на игрока:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
+    await cb_player_card(callback)
 
 @dp.callback_query(F.data.startswith("delete_"))
 async def cb_delete(callback: CallbackQuery):
@@ -315,7 +304,20 @@ async def cb_delete(callback: CallbackQuery):
         name = players[uid]["name"]
         del players[uid]
         await callback.answer(f"🗑 {name} удалён")
-    await cb_show_delete(callback)
+    await cb_show_players(callback)
+
+@dp.callback_query(F.data == "back_panel")
+async def cb_back_panel(callback: CallbackQuery):
+    buttons = [
+        [InlineKeyboardButton(text="👥 Игроки", callback_data="show_players")],
+        [InlineKeyboardButton(text="📋 Полный список", callback_data="show_list")],
+        [InlineKeyboardButton(text="🎲 Жеребьёвка", callback_data="show_roles")],
+        [InlineKeyboardButton(text="♻️ Новый раунд", callback_data="new_round")],
+        [InlineKeyboardButton(text="📊 Результаты раунда", callback_data="show_rounds")],
+        [InlineKeyboardButton(text="📋 Итоги игры", callback_data="show_results")],
+        [InlineKeyboardButton(text="🗑 Очистить всё", callback_data="clear_list")],
+    ]
+    await callback.message.edit_text("⚙️ Админ-панель:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 # ============ ЖЕРЕБЬЁВКА ============
 @dp.callback_query(F.data == "show_roles")
@@ -325,7 +327,7 @@ async def cb_roles(callback: CallbackQuery):
     if total < 2:
         await callback.message.edit_text(
             f"Мало подтверждённых игроков: {total}. Нужно минимум 2.\n"
-            f"Сначала подтверди их в «✅ Подтвердить игрока»."
+            f"Сначала подтверди их в «👥 Игроки»."
         )
         return
 
@@ -356,7 +358,10 @@ async def cb_roles(callback: CallbackQuery):
         text += f"— {v['team']} | {v['plate']}\n"
     await callback.message.edit_text(text, parse_mode="HTML")
 
-    # Ссылки для охотников
+    await send_links(hunters, victims)
+
+async def send_links(hunters, victims):
+    """Рассылает ссылки охотникам и жертвам"""
     for h in hunters:
         try:
             link = await bot.create_chat_invite_link(
@@ -373,7 +378,6 @@ async def cb_roles(callback: CallbackQuery):
         except Exception:
             pass
 
-    # Ссылки для жертв
     for v in victims:
         try:
             link = await bot.create_chat_invite_link(
@@ -393,7 +397,6 @@ async def cb_roles(callback: CallbackQuery):
 # ============ НОВЫЙ РАУНД (авто-кик + новые ссылки) ============
 @dp.callback_query(F.data == "new_round")
 async def cb_new_round(callback: CallbackQuery):
-    # Проверяем, что бот может кикать
     if not HUNTERS_CHAT_ID or not VICTIMS_CHAT_ID:
         await callback.message.edit_text(
             "❌ Не настроены ID бесед (HUNTERS_CHAT_ID / VICTIMS_CHAT_ID).\n"
@@ -401,77 +404,52 @@ async def cb_new_round(callback: CallbackQuery):
         )
         return
 
-    # 1. Кикаем всех из бесед (кроме админов)
     kicked = 0
     for uid in list(players.keys()):
-        # не кикаем админов
         if uid in ADMIN_IDS:
             continue
-        # кикаем из беседы охотников
         try:
             await bot.ban_chat_member(chat_id=int(HUNTERS_CHAT_ID), user_id=uid)
             await bot.unban_chat_member(chat_id=int(HUNTERS_CHAT_ID), user_id=uid)
             kicked += 1
         except Exception:
             pass
-        # кикаем из беседы жертв
         try:
             await bot.ban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
             await bot.unban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
         except Exception:
             pass
 
-    # 2. Меняем роли у игроков (охотник ↔ жертва)
-    for uid, p in players.items():
-        if p.get("role") == "hunter":
-            p["role"] = "victim"
-        elif p.get("role") == "victim":
-            p["role"] = "hunter"
+    ready = [p for p in players.values() if p.get("confirmed")]
+    total = len(ready)
+    if total < 2:
+        await callback.message.edit_text("Мало подтверждённых игроков.")
+        return
 
-    # 3. Создаём новые ссылки и рассылаем
-    sent = 0
-    for uid, p in players.items():
-        if not p.get("confirmed"):
-            continue
-        role = p.get("role")
-        if role == "hunter":
-            try:
-                link = await bot.create_chat_invite_link(
-                    chat_id=int(HUNTERS_CHAT_ID),
-                    member_limit=1
-                )
-                await bot.send_message(
-                    uid,
-                    "🔪 <b>Ты — ОХОТНИК!</b>\n"
-                    "Твоя цель — найти и поймать жертв. Удачи! 🎭\n\n"
-                    f"👉 Вступай в группу охотников:\n{link.invite_link}",
-                    parse_mode="HTML"
-                )
-                sent += 1
-            except Exception:
-                pass
-        elif role == "victim":
-            try:
-                link = await bot.create_chat_invite_link(
-                    chat_id=int(VICTIMS_CHAT_ID),
-                    member_limit=1
-                )
-                await bot.send_message(
-                    uid,
-                    "🏃 <b>Ты — ЖЕРТВА!</b>\n"
-                    "Беги и прячься от охотников! Удачи! 🎭\n\n"
-                    f"👉 Вступай в группу жертв:\n{link.invite_link}",
-                    parse_mode="HTML"
-                )
-                sent += 1
-            except Exception:
-                pass
+    half = total // 2
+    if total % 2 == 0:
+        hunters_count = half
+    else:
+        hunters_count = random.choice([half, total - half])
+
+    random.shuffle(ready)
+    hunters = ready[:hunters_count]
+    victims = ready[hunters_count:]
+
+    for h in hunters:
+        players[h["id"]]["role"] = "hunter"
+    for v in victims:
+        players[v["id"]]["role"] = "victim"
+
+    await send_links(hunters, victims)
 
     await callback.message.edit_text(
-        f"🔄 <b>Новый раунд!</b>\n\n"
+        f"♻️ <b>Новый раунд!</b>\n\n"
         f"👥 Кикнуто из бесед: <b>{kicked}</b>\n"
-        f"📨 Отправлено новых ссылок: <b>{sent}</b>\n\n"
-        f"Роли изменены на противоположные.",
+        f"🎲 Роли перемешаны заново\n"
+        f"🔪 Охотники: <b>{len(hunters)}</b>\n"
+        f"🏃 Жертвы: <b>{len(victims)}</b>\n\n"
+        f"📨 Новые ссылки отправлены в личку.",
         parse_mode="HTML"
     )
 
@@ -498,21 +476,51 @@ async def cb_select_round(callback: CallbackQuery):
     await show_round_players(callback)
 
 async def show_round_players(callback: CallbackQuery):
-    buttons = []
-    for uid, p in players.items():
-        if p.get("confirmed"):
-            role_icon = "🔪" if p.get("role") == "hunter" else "🏃" if p.get("role") == "victim" else "❓"
-            buttons.append([InlineKeyboardButton(
-                text=f"{role_icon} {p['team']} ({p['plate']}) — {p['score']} б.",
-                callback_data=f"player_{uid}"
-            )])
-    if not buttons:
-        await callback.message.edit_text("Нет подтверждённых игроков.")
+    hunters = [p for p in players.values() if p.get("confirmed") and p.get("role") == "hunter"]
+    victims = [p for p in players.values() if p.get("confirmed") and p.get("role") == "victim"]
+
+    if not hunters and not victims:
+        await callback.message.edit_text("Нет подтверждённых игроков с ролями.")
         return
+
+    if current_round in [1, 2]:
+        car_points, hide_points = 2, 3
+    else:
+        car_points, hide_points = 4, 6
+
+    text = f"📊 <b>Раунд {current_round}</b>\n"
+    text += f"🚗 Машина: +{car_points} | 🏃 Спрятался: +{hide_points}\n\n"
+
+    if hunters:
+        text += f"🔪 <b>Охотники ({len(hunters)}):</b>\n"
+        for h in hunters:
+            text += f"— {h['team']} | {h['plate']} — <b>{h['score']} б.</b>\n"
+        text += "\n"
+
+    if victims:
+        text += f"🏃 <b>Жертвы ({len(victims)}):</b>\n"
+        for v in victims:
+            text += f"— {v['team']} | {v['plate']} — <b>{v['score']} б.</b>\n"
+        text += "\n"
+
+    text += "Жми на игрока, чтобы начислить баллы:"
+
+    buttons = []
+    for h in hunters:
+        buttons.append([InlineKeyboardButton(
+            text=f"🔪 {h['team']} — {h['score']} б.",
+            callback_data=f"player_{h['id']}"
+        )])
+    for v in victims:
+        buttons.append([InlineKeyboardButton(
+            text=f"🏃 {v['team']} — {v['score']} б.",
+            callback_data=f"player_{v['id']}"
+        )])
+
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="show_rounds")])
+
     await callback.message.edit_text(
-        f"📊 <b>Раунд {current_round}</b>\n"
-        f"Жми на игрока, чтобы начислить баллы:",
+        text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         parse_mode="HTML"
     )
@@ -526,11 +534,12 @@ async def cb_player_actions(callback: CallbackQuery):
     p = players[uid]
 
     if current_round in [1, 2]:
-        car_points = 2
-        hide_points = 3
+        car_points, hide_points = 2, 3
     else:
-        car_points = 4
-        hide_points = 6
+        car_points, hide_points = 4, 6
+
+    role_icon = "🔪" if p.get("role") == "hunter" else "🏃" if p.get("role") == "victim" else "❓"
+    role_text = "ОХОТНИК" if p.get("role") == "hunter" else "ЖЕРТВА" if p.get("role") == "victim" else "не назначена"
 
     buttons = [
         [InlineKeyboardButton(
@@ -547,8 +556,10 @@ async def cb_player_actions(callback: CallbackQuery):
         )],
     ]
     await callback.message.edit_text(
-        f"<b>{p['team']}</b> | {p['car']} {p['plate']}\n"
-        f"Текущие баллы: <b>{p['score']}</b>\n\n"
+        f"{role_icon} <b>{p['team']}</b>\n"
+        f"Роль: <b>{role_text}</b>\n"
+        f"🚗 {p['car']} | {p['plate']}\n"
+        f"🏆 Баллы: <b>{p['score']}</b>\n\n"
         f"Что начислить?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         parse_mode="HTML"
@@ -607,7 +618,7 @@ async def cb_clear(callback: CallbackQuery):
     count = len(players)
     players.clear()
     current_round = 0
-    await callback.message.edit_text(f"🔄 Список очищен. Было игроков: {count}. Готово к новой игре!")
+    await callback.message.edit_text(f"🗑 Список очищен. Было игроков: {count}. Готово к новой игре!")
 
 @dp.message(Command("newgame"))
 async def newgame(message: Message):
@@ -617,7 +628,7 @@ async def newgame(message: Message):
     count = len(players)
     players.clear()
     current_round = 0
-    await message.answer(f"🔄 Список очищен. Было игроков: {count}. Готово к новой игре!")
+    await message.answer(f"🗑 Список очищен. Было игроков: {count}. Готово к новой игре!")
 
 # ============ КНОПКИ МЕНЮ ============
 @dp.message(F.text == "📝 Регистрация")
@@ -636,8 +647,8 @@ async def btn_edit(message: Message, state: FSMContext):
 async def btn_panel(message: Message):
     await panel(message)
 
-@dp.message(F.text == "ℹ️ Помощь")
-async def btn_help(message: Message):
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
     await message.answer(
         "📖 <b>Что умеет бот:</b>\n\n"
         "📝 Регистрация — записаться на игру\n"
@@ -649,7 +660,8 @@ async def btn_help(message: Message):
         "/unreg — отменить регистрацию\n"
         "/edit — изменить данные\n"
         "/pay — сообщить об оплате\n"
-        "/panel — админ-панель (только для админа)",
+        "/panel — админ-панель (только для админа)\n"
+        "/help — эта справка",
         parse_mode="HTML"
     )
 
