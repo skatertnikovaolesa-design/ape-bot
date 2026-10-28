@@ -540,6 +540,29 @@ async def cb_clear(callback: CallbackQuery):
     current_round = 0
     await callback.message.edit_text(f"🗑 Список очищен. Было игроков: {count}. Готово к новой игре!")
 
+# ============ КНОПКИ МЕНЮ ============
+@dp.message(F.text == "📝 Регистрация")
+async def btn_reg(message: Message, state: FSMContext):
+    await reg_start(message, state)
+
+@dp.message(F.text == "💸 Я оплатил")
+async def btn_pay(message: Message):
+    await pay(message)
+
+@dp.message(F.text == "✏️ Изменить данные")
+async def btn_edit(message: Message, state: FSMContext):
+    await edit_start(message, state)
+
+@dp.message(F.text == "⚙️ Админ-панель")
+async def btn_panel(message: Message):
+    await panel(message)
+
+@dp.message(Command("menu"))
+async def cmd_menu(message: Message):
+    is_admin = message.from_user.id in ADMIN_IDS
+    menu = admin_menu() if is_admin else user_menu()
+    await message.answer("Меню:", reply_markup=menu)
+
 # ============ СТАРТ ============
 @dp.message(CommandStart())
 async def start_handler(message: Message):
@@ -548,7 +571,6 @@ async def start_handler(message: Message):
     await message.answer(f"Привет, {message.from_user.full_name}! 👋\n\nЖми на кнопки внизу экрана 👇", reply_markup=menu)
 
 async def main():
-    # ВОТ ЗДЕСЬ ДОБАВЛЕНА СТРОКА, ЧТОБЫ БОТ ВИДЕЛ КНОПКИ
     await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
