@@ -21,7 +21,7 @@ HUNTERS_CHAT_ID = os.getenv("HUNTERS_CHAT_ID")
 VICTIMS_CHAT_ID = os.getenv("VICTIMS_CHAT_ID")
 ADMIN_CONTACT = "@pa1_1_1a"
 
-# ПРОКСИ ИЗ CLOUDFLARE (для обхода блокировок)
+# ПРОКСИ ИЗ CLOUDFLARE
 PROXY_URL = "https://plain-lab-e69bape.skatertnikovaolesa.workers.dev"
 
 # ============ ДАННЫЕ ============
@@ -236,7 +236,7 @@ async def cb_show_players(callback: CallbackQuery):
     buttons = []
     for uid, p in players.items():
         status = "✅" if p.get("confirmed") else "❌"
-        buttons.append([InlineKeyboardButton(text=f"{status} 🚗 {p['car']} {p['plate']} ({p['team']})", callback_data=f"player_card_{uid}")])
+        buttons.append([InlineKeyboardButton(text=f"{status} 🚗 {p['plate']} ({p['team']})", callback_data=f"player_card_{uid}")])
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_panel")])
     await callback.message.edit_text("👥 <b>Игроки</b>\nЖми на игрока для действий:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML")
 
@@ -306,7 +306,6 @@ async def cb_exit_player(callback: CallbackQuery):
             await bot.ban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
             await bot.unban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
         except Exception: pass
-
         del players[uid]
         await callback.answer(f"🚪 {name} удалён из игры")
     await cb_show_players(callback)
@@ -339,12 +338,12 @@ async def send_links(hunters, victims):
     for h in hunters:
         try:
             link = await bot.create_chat_invite_link(chat_id=int(HUNTERS_CHAT_ID), member_limit=1)
-            await bot.send_message(h["id"], "🔪 <b>Ты — ОХОТНИК!</b>\nТвоя цель — найти и поймать жертв. Удачи! 🎭\n\n👉 Вступай в группу охотников:\n{link.invite_link}".replace("{link.invite_link}", link.invite_link), parse_mode="HTML")
+            await bot.send_message(h["id"], f"🔪 <b>Ты — ОХОТНИК!</b>\nТвоя цель — найти и поймать жертв. Удачи! 🎭\n\n👉 Вступай в группу охотников:\n{link.invite_link}", parse_mode="HTML")
         except Exception: pass
     for v in victims:
         try:
             link = await bot.create_chat_invite_link(chat_id=int(VICTIMS_CHAT_ID), member_limit=1)
-            await bot.send_message(v["id"], "🏃 <b>Ты — ЖЕРТВА!</b>\nБеги и прячься от охотников! Удачи! 🎭\n\n👉 Вступай в группу жертв:\n{link.invite_link}".replace("{link.invite_link}", link.invite_link), parse_mode="HTML")
+            await bot.send_message(v["id"], f"🏃 <b>Ты — ЖЕРТВА!</b>\nБеги и прячься от охотников! Удачи! 🎭\n\n👉 Вступай в группу жертв:\n{link.invite_link}", parse_mode="HTML")
         except Exception: pass
 
 async def kick_all():
@@ -548,8 +547,9 @@ async def start_handler(message: Message):
     menu = admin_menu() if is_admin else user_menu()
     await message.answer(f"Привет, {message.from_user.full_name}! 👋\n\nЖми на кнопки внизу экрана 👇", reply_markup=menu)
 
+# Самая важная часть: добавляем allowed_updates, чтобы бот видел кнопки
 async def main():
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
     asyncio.run(main())
