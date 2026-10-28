@@ -16,7 +16,7 @@ from aiogram.client.telegram import TelegramAPIServer
 
 # ============ НАСТРОЙКИ ============
 TOKEN = os.getenv("TOKEN")
-# Три админа (твой, второй и новый)
+# Три админа
 ADMIN_IDS = [644972263, 324171335, 504642876]
 
 # ВСТРОЕННЫЕ ID БЕСЕД
@@ -245,10 +245,9 @@ async def cb_show_players(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("player_card_"))
 async def cb_player_card(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[2])
-    if uid not in players:
-        await callback.answer("Игрок не найден")
-        return
+    try: uid = int(callback.data.split("_")[2])
+    except: return
+    if uid not in players: return
     p = players[uid]
     status = "✅ Подтверждён" if p.get("confirmed") else "❌ Не подтверждён"
     buttons = []
@@ -273,7 +272,8 @@ async def cb_player_card(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("confirm_"))
 async def cb_confirm(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[1])
+    try: uid = int(callback.data.split("_")[1])
+    except: return
     if uid in players:
         players[uid]["confirmed"] = True
         name = players[uid]["name"]
@@ -290,7 +290,8 @@ async def cb_confirm(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("unconfirm_"))
 async def cb_unconfirm(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[1])
+    try: uid = int(callback.data.split("_")[1])
+    except: return
     if uid in players:
         players[uid]["confirmed"] = False
         await callback.answer(f"❌ {players[uid]['name']} снят с подтверждения")
@@ -298,7 +299,8 @@ async def cb_unconfirm(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("exit_"))
 async def cb_exit_player(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[1])
+    try: uid = int(callback.data.split("_")[1])
+    except: return
     if uid in players:
         name = players[uid]["name"]
         try:
@@ -315,7 +317,8 @@ async def cb_exit_player(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("delete_"))
 async def cb_delete(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[1])
+    try: uid = int(callback.data.split("_")[1])
+    except: return
     if uid in players:
         name = players[uid]["name"]
         del players[uid]
@@ -461,15 +464,17 @@ async def show_round_players(callback: CallbackQuery):
     buttons = []
     text = f"📊 <b>Раунд {current_round}</b>\n\n"
     
+    # ОХОТНИКИ (с иконкой ножа)
     for h in hunters:
         text += f"🔪 {h['car']} {h['plate']} | {h['team']} — {h['score']} б.\n"
         buttons.append([InlineKeyboardButton(text=f"🔪 {h['car']} {h['plate']} | {h['team']} — {h['score']} б.", callback_data=f"player_{h['id']}")])
     
     text += "\n"
+    # ЖЕРТВЫ (с иконкой бегущего, если найден - галочка)
     for v in victims:
-        status = "✅ Найден " if v.get("found") else ""
-        text += f"{status}{v['car']} {v['plate']} | {v['team']} — {v['score']} б.\n"
-        buttons.append([InlineKeyboardButton(text=f"{status}{v['car']} {v['plate']} | {v['team']} — {v['score']} б.", callback_data=f"player_{v['id']}")])
+        icon = "✅" if v.get("found") else "🏃"
+        text += f"{icon} {v['car']} {v['plate']} | {v['team']} — {v['score']} б.\n"
+        buttons.append([InlineKeyboardButton(text=f"{icon} {v['car']} {v['plate']} | {v['team']} — {v['score']} б.", callback_data=f"player_{v['id']}")])
 
     buttons.append([InlineKeyboardButton(text="🏁 Завершить раунд", callback_data="finish_round")])
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_panel")])
@@ -478,7 +483,8 @@ async def show_round_players(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("player_"))
 async def cb_player_actions(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[1])
+    try: uid = int(callback.data.split("_")[1])
+    except: return
     if uid not in players: return
     p = players[uid]
     
@@ -494,7 +500,6 @@ async def cb_player_actions(callback: CallbackQuery):
 
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_round_{current_round}")])
     
-    # Убрали статус "Прячется" из карточки
     status_text = "✅ Найден" if p.get("found") else "В игре"
     
     await callback.message.edit_text(
@@ -509,7 +514,8 @@ async def cb_player_actions(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("add_car_"))
 async def cb_add_car(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[2])
+    try: uid = int(callback.data.split("_")[2])
+    except: return
     points = 2 if current_round in [1, 2] else 4
     if uid in players:
         players[uid]["score"] += points
@@ -518,7 +524,8 @@ async def cb_add_car(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("add_hide_"))
 async def cb_add_hide(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[2])
+    try: uid = int(callback.data.split("_")[2])
+    except: return
     points = 3 if current_round in [1, 2] else 6
     if uid in players:
         players[uid]["score"] += points
@@ -527,7 +534,8 @@ async def cb_add_hide(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("mark_found_"))
 async def cb_mark_found(callback: CallbackQuery):
-    uid = int(callback.data.split("_")[2])
+    try: uid = int(callback.data.split("_")[2])
+    except: return
     if uid in players:
         players[uid]["found"] = True
         await callback.answer("✅ Отмечен как найденный")
