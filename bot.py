@@ -16,9 +16,12 @@ from aiogram.client.telegram import TelegramAPIServer
 
 # ============ НАСТРОЙКИ ============
 TOKEN = os.getenv("TOKEN")
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",")]
-HUNTERS_CHAT_ID = os.getenv("HUNTERS_CHAT_ID")
-VICTIMS_CHAT_ID = os.getenv("VICTIMS_CHAT_ID")
+# Три админа (твой, второй и новый)
+ADMIN_IDS = [644972263, 324171335, 504642876]
+
+# ВСТРОЕННЫЕ ID БЕСЕД (на случай сбоя переменных)
+HUNTERS_CHAT_ID = -1004494212932
+VICTIMS_CHAT_ID = -1004426890988
 ADMIN_CONTACT = "@pa1_1_1a"
 
 # ПРОКСИ ИЗ CLOUDFLARE
@@ -299,12 +302,12 @@ async def cb_exit_player(callback: CallbackQuery):
     if uid in players:
         name = players[uid]["name"]
         try:
-            await bot.ban_chat_member(chat_id=int(HUNTERS_CHAT_ID), user_id=uid)
-            await bot.unban_chat_member(chat_id=int(HUNTERS_CHAT_ID), user_id=uid)
+            await bot.ban_chat_member(chat_id=HUNTERS_CHAT_ID, user_id=uid)
+            await bot.unban_chat_member(chat_id=HUNTERS_CHAT_ID, user_id=uid)
         except Exception: pass
         try:
-            await bot.ban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
-            await bot.unban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
+            await bot.ban_chat_member(chat_id=VICTIMS_CHAT_ID, user_id=uid)
+            await bot.unban_chat_member(chat_id=VICTIMS_CHAT_ID, user_id=uid)
         except Exception: pass
         del players[uid]
         await callback.answer(f"🚪 {name} удалён из игры")
@@ -334,15 +337,27 @@ async def cb_back_panel(callback: CallbackQuery):
     await callback.message.edit_text("⚙️ Админ-панель:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 # ============ ЖЕРЕБЬЁВКА И РАУНДЫ ============
+async def revoke_old_links():
+    for uid, p in players.items():
+        if "last_link" in p:
+            try:
+                chat_id = HUNTERS_CHAT_ID if p.get("role") == "hunter" else VICTIMS_CHAT_ID
+                await bot.revoke_chat_invite_link(chat_id=chat_id, invite_link=p["last_link"])
+                del p["last_link"]
+            except Exception:
+                pass
+
 async def send_links(hunters, victims):
     for h in hunters:
         try:
-            link = await bot.create_chat_invite_link(chat_id=int(HUNTERS_CHAT_ID), member_limit=1)
+            link = await bot.create_chat_invite_link(chat_id=HUNTERS_CHAT_ID, member_limit=1)
+            players[h["id"]]["last_link"] = link.invite_link
             await bot.send_message(h["id"], f"🔪 <b>Ты — ОХОТНИК!</b>\nТвоя цель — найти и поймать жертв. Удачи! 🎭\n\n👉 Вступай в группу охотников:\n{link.invite_link}", parse_mode="HTML")
         except Exception: pass
     for v in victims:
         try:
-            link = await bot.create_chat_invite_link(chat_id=int(VICTIMS_CHAT_ID), member_limit=1)
+            link = await bot.create_chat_invite_link(chat_id=VICTIMS_CHAT_ID, member_limit=1)
+            players[v["id"]]["last_link"] = link.invite_link
             await bot.send_message(v["id"], f"🏃 <b>Ты — ЖЕРТВА!</b>\nБеги и прячься от охотников! Удачи! 🎭\n\n👉 Вступай в группу жертв:\n{link.invite_link}", parse_mode="HTML")
         except Exception: pass
 
@@ -351,13 +366,13 @@ async def kick_all():
     for uid in list(players.keys()):
         if uid in ADMIN_IDS: continue
         try:
-            await bot.ban_chat_member(chat_id=int(HUNTERS_CHAT_ID), user_id=uid)
-            await bot.unban_chat_member(chat_id=int(HUNTERS_CHAT_ID), user_id=uid)
+            await bot.ban_chat_member(chat_id=HUNTERS_CHAT_ID, user_id=uid)
+            await bot.unban_chat_member(chat_id=HUNTERS_CHAT_ID, user_id=uid)
             kicked += 1
         except Exception: pass
         try:
-            await bot.ban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
-            await bot.unban_chat_member(chat_id=int(VICTIMS_CHAT_ID), user_id=uid)
+            await bot.ban_chat_member(chat_id=VICTIMS_CHAT_ID, user_id=uid)
+            await bot.unban_chat_member(chat_id=VICTIMS_CHAT_ID, user_id=uid)
         except Exception: pass
     return kicked
 
@@ -380,6 +395,7 @@ async def cb_roles(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "switch_roles")
 async def cb_switch_roles(callback: CallbackQuery):
+    await revoke_old_links()
     kicked = await kick_all()
     ready = [p for p in players.values() if p.get("confirmed")]
     if len(ready) < 2:
@@ -394,10 +410,11 @@ async def cb_switch_roles(callback: CallbackQuery):
             p["role"] = "hunter"
             hunters.append(p)
     await send_links(hunters, victims)
-    await callback.message.edit_text(f"🔄 <b>Смена ролей (2 раунд)</b>\n\nКикнуто: {kicked}\nРоли поменялись местами.\nНовые ссылки отправлены.", parse_mode="HTML")
+    await callback.message.edit_text(f"🔄 <b>Смена ролей (2 раунд)</b>\n\nКикнуто: {kicked}\nРоли поменялись местами.\nСтарые ссылки аннулированы.\nНовые ссылки отправлены.", parse_mode="HTML")
 
 @dp.callback_query(F.data == "reshuffle_roles")
 async def cb_reshuffle_roles(callback: CallbackQuery):
+    await revoke_old_links()
     kicked = await kick_all()
     ready = [p for p in players.values() if p.get("confirmed")]
     if len(ready) < 2:
@@ -410,7 +427,7 @@ async def cb_reshuffle_roles(callback: CallbackQuery):
     for h in hunters: players[h["id"]]["role"] = "hunter"
     for v in victims: players[v["id"]]["role"] = "victim"
     await send_links(hunters, victims)
-    await callback.message.edit_text(f"🎲 <b>Пережеребьёвка (3 раунд)</b>\n\nКикнуто: {kicked}\nРоли перемешаны заново.\nНовые ссылки отправлены.", parse_mode="HTML")
+    await callback.message.edit_text(f"🎲 <b>Пережеребьёвка (3 раунд)</b>\n\nКикнуто: {kicked}\nРоли перемешаны заново.\nСтарые ссылки аннулированы.\nНовые ссылки отправлены.", parse_mode="HTML")
 
 # ============ РЕЗУЛЬТАТЫ И БАЛЛЫ ============
 @dp.callback_query(F.data == "show_rounds")
