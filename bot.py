@@ -547,8 +547,8 @@ async def start_handler(message: Message):
     menu = admin_menu() if is_admin else user_menu()
     await message.answer(f"Привет, {message.from_user.full_name}! 👋\n\nЖми на кнопки внизу экрана 👇", reply_markup=menu)
 
-# Самая важная часть: добавляем allowed_updates, чтобы бот видел кнопки
 async def main():
+    # ВОТ ЗДЕСЬ ДОБАВЛЕНА СТРОКА, ЧТОБЫ БОТ ВИДЕЛ КНОПКИ
     await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
