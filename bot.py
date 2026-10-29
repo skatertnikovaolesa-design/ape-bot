@@ -470,7 +470,6 @@ async def show_round_players(callback: CallbackQuery):
         text += f"{icon} {v['car']} {v['plate']} | {v['team']} — {v['score']} б.\n"
         buttons.append([InlineKeyboardButton(text=f"{icon} {v['car']} {v['plate']} | {v['team']} — {v['score']} б.", callback_data=f"player_{v['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="🏁 Завершить раунд", callback_data="finish_round")])
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_panel")])
 
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML")
@@ -486,18 +485,21 @@ async def cb_player_actions(callback: CallbackQuery):
     points_hide = 3 if current_round in [1, 2] else 6
 
     buttons = []
+    
     if p.get("role") == "hunter":
         buttons.append([InlineKeyboardButton(text=f"🚗 +1 машина (+{points_car})", callback_data=f"add_car_{uid}")])
     else:
-        buttons.append([InlineKeyboardButton(text=f"🏃 + Спрятался (+{points_hide})", callback_data=f"add_hide_{uid}")])
         if p.get("found"):
-            buttons.append([InlineKeyboardButton(text=f"✅ Уже найден", callback_data="ignore")])
+            buttons.append([InlineKeyboardButton(text="✅ Найден (0 б.)", callback_data="ignore")])
         else:
-            buttons.append([InlineKeyboardButton(text=f"❌ Отметить как найденного", callback_data=f"mark_found_{uid}")])
+            buttons.append([InlineKeyboardButton(text="❌ Найден (0 б.)", callback_data=f"mark_found_{uid}")])
+            
+        buttons.append([InlineKeyboardButton(text=f"🏃 Спрятался (+{points_hide})", callback_data=f"add_hide_{uid}")])
 
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_round_{current_round}")])
     
     status_text = "✅ Найден" if p.get("found") else "В игре"
+    
     await callback.message.edit_text(
         f"🚗 <b>{p['car']} | {p['plate']}</b>\n"
         f"👥 {p['team']}\n"
@@ -510,7 +512,7 @@ async def cb_player_actions(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "ignore")
 async def cb_ignore(callback: CallbackQuery):
-    await callback.answer("Этот игрок уже отмечен как найденный.")
+    await callback.answer("Этот игрок уже отмечен как найденный (0 б.).")
 
 @dp.callback_query(F.data.startswith("add_car_"))
 async def cb_add_car(callback: CallbackQuery):
@@ -538,33 +540,12 @@ async def cb_mark_found(callback: CallbackQuery):
     except: return
     if uid in players:
         players[uid]["found"] = True
-        await callback.answer("✅ Отмечен как найденный")
+        await callback.answer("Отмечен как найденный (0 б.)")
     await cb_player_actions(callback)
 
 @dp.callback_query(F.data.startswith("back_round_"))
 async def cb_back_round(callback: CallbackQuery):
     await show_round_players(callback)
-
-@dp.callback_query(F.data == "finish_round")
-async def cb_finish_round(callback: CallbackQuery):
-    points_hide = 3 if current_round in [1, 2] else 6
-    count = 0
-    found_names = []
-    
-    for p in players.values():
-        if p.get("confirmed") and p.get("role") == "victim":
-            if not p.get("found", False):
-                p["score"] += points_hide
-                count += 1
-            else:
-                found_names.append(p['team'])
-
-    text = f"🏁 <b>Раунд {current_round} завершён!</b>\n\n"
-    text += f"Бот начислил +{points_hide} баллов {count} жертвам, которых не нашли.\n\n"
-    if found_names:
-        text += f"✅ <b>Были найдены (им не начислено):</b> {', '.join(found_names)}"
-        
-    await callback.message.edit_text(text, parse_mode="HTML")
 
 # ============ ИТОГИ ============
 @dp.callback_query(F.data == "show_results")
