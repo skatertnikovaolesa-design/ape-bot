@@ -540,7 +540,8 @@ async def cb_mark_found(callback: CallbackQuery):
     except: return
     if uid in players:
         players[uid]["found"] = True
-        await callback.answer("Отмечен как найденный (0 б.)")
+        await callback.answer("✅ Отмечен как найденный!")
+    # Принудительно обновляем карточку игрока, чтобы кнопка сменилась
     await cb_player_actions(callback)
 
 @dp.callback_query(F.data.startswith("back_round_"))
