@@ -460,13 +460,11 @@ async def show_round_players(callback: CallbackQuery):
     buttons = []
     text = f"📊 <b>Раунд {current_round}</b>\n\n"
     
-    # ОХОТНИКИ
     for h in hunters:
         text += f"🔪 {h['car']} {h['plate']} | {h['team']} — {h['score']} б.\n"
         buttons.append([InlineKeyboardButton(text=f"🔪 {h['car']} {h['plate']} | {h['team']} — {h['score']} б.", callback_data=f"player_{h['id']}")])
     
     text += "\n"
-    # ЖЕРТВЫ
     for v in victims:
         icon = "✅" if v.get("found") else "🏃"
         text += f"{icon} {v['car']} {v['plate']} | {v['team']} — {v['score']} б.\n"
@@ -488,15 +486,10 @@ async def cb_player_actions(callback: CallbackQuery):
     points_hide = 3 if current_round in [1, 2] else 6
 
     buttons = []
-    
-    # КНОПКИ ДЛЯ ОХОТНИКА
     if p.get("role") == "hunter":
         buttons.append([InlineKeyboardButton(text=f"🚗 +1 машина (+{points_car})", callback_data=f"add_car_{uid}")])
-        
-    # КНОПКИ ДЛЯ ЖЕРТВЫ
     else:
         buttons.append([InlineKeyboardButton(text=f"🏃 + Спрятался (+{points_hide})", callback_data=f"add_hide_{uid}")])
-        # Кнопка "Найден" ТОЛЬКО для жертв!
         if p.get("found"):
             buttons.append([InlineKeyboardButton(text=f"✅ Уже найден", callback_data="ignore")])
         else:
@@ -505,7 +498,6 @@ async def cb_player_actions(callback: CallbackQuery):
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_round_{current_round}")])
     
     status_text = "✅ Найден" if p.get("found") else "В игре"
-    
     await callback.message.edit_text(
         f"🚗 <b>{p['car']} | {p['plate']}</b>\n"
         f"👥 {p['team']}\n"
@@ -545,7 +537,6 @@ async def cb_mark_found(callback: CallbackQuery):
     try: uid = int(callback.data.split("_")[2])
     except: return
     if uid in players:
-        # Включаем статус "Найден" намертво
         players[uid]["found"] = True
         await callback.answer("✅ Отмечен как найденный")
     await cb_player_actions(callback)
@@ -562,7 +553,6 @@ async def cb_finish_round(callback: CallbackQuery):
     
     for p in players.values():
         if p.get("confirmed") and p.get("role") == "victim":
-            # ЖЕСТКАЯ ПРОВЕРКА: если найден - НЕ НАЧИСЛЯЕМ
             if not p.get("found", False):
                 p["score"] += points_hide
                 count += 1
