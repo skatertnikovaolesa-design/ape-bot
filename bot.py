@@ -16,22 +16,18 @@ from aiogram.client.telegram import TelegramAPIServer
 
 # ============ НАСТРОЙКИ ============
 TOKEN = os.getenv("TOKEN")
-# Три админа
 ADMIN_IDS = [644972263, 324171335, 504642876]
 
-# ВСТРОЕННЫЕ ID БЕСЕД
 HUNTERS_CHAT_ID = -1004494212932
 VICTIMS_CHAT_ID = -1004426890988
 ADMIN_CONTACT = "@pa1_1_1a"
 
-# ПРОКСИ ИЗ CLOUDFLARE
 PROXY_URL = "https://plain-lab-e69bape.skatertnikovaolesa.workers.dev"
 
 # ============ ДАННЫЕ ============
 players = {}
 current_round = 0
 
-# Подключение через прокси
 session = AiohttpSession(api=TelegramAPIServer.from_base(PROXY_URL))
 bot = Bot(token=TOKEN, session=session)
 dp = Dispatcher()
@@ -464,13 +460,13 @@ async def show_round_players(callback: CallbackQuery):
     buttons = []
     text = f"📊 <b>Раунд {current_round}</b>\n\n"
     
-    # ОХОТНИКИ (с иконкой ножа)
+    # ОХОТНИКИ
     for h in hunters:
         text += f"🔪 {h['car']} {h['plate']} | {h['team']} — {h['score']} б.\n"
         buttons.append([InlineKeyboardButton(text=f"🔪 {h['car']} {h['plate']} | {h['team']} — {h['score']} б.", callback_data=f"player_{h['id']}")])
     
     text += "\n"
-    # ЖЕРТВЫ (с иконкой бегущего, если найден - галочка)
+    # ЖЕРТВЫ
     for v in victims:
         icon = "✅" if v.get("found") else "🏃"
         text += f"{icon} {v['car']} {v['plate']} | {v['team']} — {v['score']} б.\n"
@@ -492,11 +488,19 @@ async def cb_player_actions(callback: CallbackQuery):
     points_hide = 3 if current_round in [1, 2] else 6
 
     buttons = []
+    
+    # КНОПКИ ДЛЯ ОХОТНИКА
     if p.get("role") == "hunter":
         buttons.append([InlineKeyboardButton(text=f"🚗 +1 машина (+{points_car})", callback_data=f"add_car_{uid}")])
+        
+    # КНОПКИ ДЛЯ ЖЕРТВЫ
     else:
         buttons.append([InlineKeyboardButton(text=f"🏃 + Спрятался (+{points_hide})", callback_data=f"add_hide_{uid}")])
-        buttons.append([InlineKeyboardButton(text=f"❌ Отметить как найденного", callback_data=f"mark_found_{uid}")])
+        # Кнопка "Найден" ТОЛЬКО для жертв!
+        if p.get("found"):
+            buttons.append([InlineKeyboardButton(text=f"✅ Уже найден", callback_data="ignore")])
+        else:
+            buttons.append([InlineKeyboardButton(text=f"❌ Отметить как найденного", callback_data=f"mark_found_{uid}")])
 
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_round_{current_round}")])
     
@@ -511,6 +515,10 @@ async def cb_player_actions(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         parse_mode="HTML"
     )
+
+@dp.callback_query(F.data == "ignore")
+async def cb_ignore(callback: CallbackQuery):
+    await callback.answer("Этот игрок уже отмечен как найденный.")
 
 @dp.callback_query(F.data.startswith("add_car_"))
 async def cb_add_car(callback: CallbackQuery):
@@ -537,6 +545,7 @@ async def cb_mark_found(callback: CallbackQuery):
     try: uid = int(callback.data.split("_")[2])
     except: return
     if uid in players:
+        # Включаем статус "Найден" намертво
         players[uid]["found"] = True
         await callback.answer("✅ Отмечен как найденный")
     await cb_player_actions(callback)
@@ -553,6 +562,7 @@ async def cb_finish_round(callback: CallbackQuery):
     
     for p in players.values():
         if p.get("confirmed") and p.get("role") == "victim":
+            # ЖЕСТКАЯ ПРОВЕРКА: если найден - НЕ НАЧИСЛЯЕМ
             if not p.get("found", False):
                 p["score"] += points_hide
                 count += 1
@@ -562,7 +572,7 @@ async def cb_finish_round(callback: CallbackQuery):
     text = f"🏁 <b>Раунд {current_round} завершён!</b>\n\n"
     text += f"Бот начислил +{points_hide} баллов {count} жертвам, которых не нашли.\n\n"
     if found_names:
-        text += f"✅ <b>Были найдены:</b> {', '.join(found_names)}"
+        text += f"✅ <b>Были найдены (им не начислено):</b> {', '.join(found_names)}"
         
     await callback.message.edit_text(text, parse_mode="HTML")
 
