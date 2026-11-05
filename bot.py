@@ -27,6 +27,7 @@ PROXY_URL = "https://plain-lab-e69bape.skatertnikovaolesa.workers.dev"
 # ============ ДАННЫЕ ============
 players = {}
 current_round = 0
+is_sending_links = False  # Защита от двойного нажатия
 
 session = AiohttpSession(api=TelegramAPIServer.from_base(PROXY_URL))
 bot = Bot(token=TOKEN, session=session)
@@ -347,18 +348,25 @@ async def revoke_old_links():
                 pass
 
 async def send_links(hunters, victims):
+    # Отправляем ссылки ОХОТНИКАМ
     for h in hunters:
         try:
             link = await bot.create_chat_invite_link(chat_id=HUNTERS_CHAT_ID, member_limit=1)
             players[h["id"]]["last_link"] = link.invite_link
             await bot.send_message(h["id"], f"🔪 <b>Ты — ОХОТНИК!</b>\nТвоя цель — найти и поймать жертв. Удачи! 🎭\n\n👉 Вступай в группу охотников:\n{link.invite_link}", parse_mode="HTML")
-        except Exception: pass
+            await asyncio.sleep(1)  # ВАЖНО: Пауза 1 секунда
+        except Exception as e:
+            print(f"Ошибка отправки охотнику: {e}")
+            
+    # Отправляем ссылки ЖЕРТВАМ
     for v in victims:
         try:
             link = await bot.create_chat_invite_link(chat_id=VICTIMS_CHAT_ID, member_limit=1)
             players[v["id"]]["last_link"] = link.invite_link
             await bot.send_message(v["id"], f"🏃 <b>Ты — ЖЕРТВА!</b>\nБеги и прячься от охотников! Удачи! 🎭\n\n👉 Вступай в группу жертв:\n{link.invite_link}", parse_mode="HTML")
-        except Exception: pass
+            await asyncio.sleep(1)  # ВАЖНО: Пауза 1 секунда
+        except Exception as e:
+            print(f"Ошибка отправки жертве: {e}")
 
 async def kick_all():
     kicked = 0
@@ -394,13 +402,24 @@ async def cb_roles(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "switch_roles")
 async def cb_switch_roles(callback: CallbackQuery):
+    global is_sending_links
+    if is_sending_links:
+        await callback.answer("⏳ Подожди, ссылки ещё рассылаются...")
+        return
+        
+    is_sending_links = True
+    await callback.message.edit_text("⏳ <b>Рассылка ссылок...</b> Пожалуйста, подождите 30 секунд.", parse_mode="HTML")
+    
     for p in players.values(): p["found"] = False
     await revoke_old_links()
     kicked = await kick_all()
+    
     ready = [p for p in players.values() if p.get("confirmed")]
     if len(ready) < 2:
         await callback.message.edit_text("Мало подтверждённых игроков.")
+        is_sending_links = False
         return
+        
     hunters, victims = [], []
     for p in ready:
         if p.get("role") == "hunter":
@@ -409,26 +428,43 @@ async def cb_switch_roles(callback: CallbackQuery):
         else:
             p["role"] = "hunter"
             hunters.append(p)
+            
     await send_links(hunters, victims)
+    
     await callback.message.edit_text(f"🔄 <b>Смена ролей (2 раунд)</b>\n\nКикнуто: {kicked}\nРоли поменялись местами.\nСтарые ссылки аннулированы.\nНовые ссылки отправлены.", parse_mode="HTML")
+    is_sending_links = False
 
 @dp.callback_query(F.data == "reshuffle_roles")
 async def cb_reshuffle_roles(callback: CallbackQuery):
+    global is_sending_links
+    if is_sending_links:
+        await callback.answer("⏳ Подожди, ссылки ещё рассылаются...")
+        return
+        
+    is_sending_links = True
+    await callback.message.edit_text("⏳ <b>Рассылка ссылок...</b> Пожалуйста, подождите 30 секунд.", parse_mode="HTML")
+    
     for p in players.values(): p["found"] = False
     await revoke_old_links()
     kicked = await kick_all()
+    
     ready = [p for p in players.values() if p.get("confirmed")]
     if len(ready) < 2:
         await callback.message.edit_text("Мало подтверждённых игроков.")
+        is_sending_links = False
         return
+        
     half = len(ready) // 2
     hunters_count = half if len(ready) % 2 == 0 else random.choice([half, len(ready) - half])
     random.shuffle(ready)
     hunters, victims = ready[:hunters_count], ready[hunters_count:]
     for h in hunters: players[h["id"]]["role"] = "hunter"
     for v in victims: players[v["id"]]["role"] = "victim"
+    
     await send_links(hunters, victims)
+    
     await callback.message.edit_text(f"🎲 <b>Пережеребьёвка (3 раунд)</b>\n\nКикнуто: {kicked}\nРоли перемешаны заново.\nСтарые ссылки аннулированы.\nНовые ссылки отправлены.", parse_mode="HTML")
+    is_sending_links = False
 
 # ============ РЕЗУЛЬТАТЫ И БАЛЛЫ ============
 @dp.callback_query(F.data == "show_rounds")
@@ -541,7 +577,6 @@ async def cb_mark_found(callback: CallbackQuery):
     if uid in players:
         players[uid]["found"] = True
         await callback.answer("✅ Отмечен как найденный!")
-    # Принудительно обновляем карточку игрока, чтобы кнопка сменилась
     await cb_player_actions(callback)
 
 @dp.callback_query(F.data.startswith("back_round_"))
